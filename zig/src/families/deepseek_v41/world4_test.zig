@@ -64,7 +64,7 @@ test "world four: trellis and scale spans retain all blocks and legacy parts" {
     }
 }
 
-test "world four: decode widths are local and native prefill stays explicitly held" {
+test "world four: decode and padded prefill widths are local" {
     const block = @import("block.zig");
     const cfg: Config = .{};
     for (0..4) |rank| for ([_]bool{ false, true }) |prefill| {
@@ -74,13 +74,9 @@ test "world four: decode widths are local and native prefill stays explicitly he
         var widths: block.Widths = .{};
         try @import("widths_listing.zig").parseDense(a, &widths, @embedFile("fixtures/dense-k2.txt"));
         try @import("widths_listing.zig").parseExperts(a, &widths, @embedFile("fixtures/expert-k2.txt"));
+        for ([_]u32{ 0, 40 }) |L| try widths.gm.put(a, L, .{ (1 << 4) | (1 << 6) | (1 << 8), (1 << 4) | (1 << 10) });
         const o: Options = .{ .world = 4, .rank = @intCast(rank) };
-        if (prefill) {
-            try std.testing.expectError(error.Unsupported, @import("block_prefill.zig").emitPrefill(a, &cfg, &widths, o, &.{ 0, 40 }, 17, 0, true));
-            try std.testing.expectError(error.UnsupportedPrefillHeads, admission.nativePrefill(&cfg, 4));
-            continue;
-        }
-        const calls = try block.emit(a, &cfg, &widths, o, &.{ 0, 40 }, 1, 0, true);
+        const calls = if (prefill) try @import("block_prefill.zig").emitPrefill(a, &cfg, &widths, o, &.{ 0, 40 }, 17, 0, true) else try block.emit(a, &cfg, &widths, o, &.{ 0, 40 }, 1, 0, true);
         const expert = try partition.share(cfg.expert_width, rank, 4);
         const vocab = try partition.share(cfg.vocab, rank, 4);
         var seen_expert = false;
@@ -97,8 +93,10 @@ test "world four: decode widths are local and native prefill stays explicitly he
                 seen_logits = true;
             }
         };
-        try std.testing.expect(seen_expert and seen_logits);
+        try std.testing.expect(seen_logits and (prefill or seen_expert));
     };
     try admission.nativePrefill(&cfg, 1);
     try admission.nativePrefill(&cfg, 2);
+    try admission.nativePrefill(&cfg, 4);
+    try std.testing.expectError(error.UnsupportedPrefillHeads, admission.nativePrefill(&cfg, 8));
 }

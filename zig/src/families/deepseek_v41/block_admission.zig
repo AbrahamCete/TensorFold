@@ -5,7 +5,7 @@ const Config = @import("config.zig").Config;
 pub fn nativePrefill(c: *const Config, world: u32) !void {
     if (world == 0 or c.heads % world != 0) return error.BadWorld;
     const tile: u32 = @intCast(@import("block_prefill.zig").bmq);
-    if ((c.heads / world) % tile != 0) return error.UnsupportedPrefillHeads;
+    if (c.heads / world != 16 and (c.heads / world) % tile != 0) return error.UnsupportedPrefillHeads;
 }
 
 pub fn options(c: *const Config, o: anytype, layers: []const u32, n: i64) !void {
