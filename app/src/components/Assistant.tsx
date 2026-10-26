@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../lib/store'
 import { api } from '../lib/ipc'
 import { discardPendingDraft } from '../lib/draft-approval'
-import type { AssistantControlSnapshot, ConnectorEvent, ConnectorId } from '../lib/types'
+import type { ConnectorEvent, ConnectorId } from '../lib/types'
 import { resolveAssistantModel } from '../lib/assistant-model'
 import { MessageCardView, bubbleToCard } from './assistant/MessageCard'
 import { eventToBubble, mergeBubbles, groupEventsIntoThreads, combineItemsByThread, type BubbleRow } from './assistant/conversation'
@@ -21,18 +21,23 @@ import { assistantDraftScope } from '../../shared/assistant-drafts'
 import { useConversationDraft } from '../lib/use-conversation-draft'
 import { desktopDraftPort } from '../lib/desktop-drafts'
 import { insertTextareaText } from '../lib/textarea-editing'
+import { useAssistantSnapshot } from './assistant/useAssistantSnapshot'
+import { ConversationHeading, EmptyInbox, InboxLoadState } from './assistant/InboxStates'
+import { isAwaitingApproval } from './assistant/pending-approvals'
+import { Button } from './ui'
 
 export function Assistant() {
   const tx = useAuthoredText()
   const launch = useStore((s) => s.launch)
   const settings = useStore((s) => s.settings)
+  const setView = useStore((s) => s.setView)
+  const setAssistantSource = useStore((s) => s.setAssistantSource)
 
   // Source filter lives in the store so the app sidebar drives it (the Assistant no
   // longer has its own sources panel — single sidebar).
   const selectedSource = useStore((s) => s.assistantSource) as SourceKey
   const [selectedItemId, setSelectedItemId] = useState('')
-  const [snapshot, setSnapshot] = useState<AssistantControlSnapshot | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { snapshot, loading, error: refreshError, refreshedAt, paused, refresh: refreshSnapshot } = useAssistantSnapshot()
   const [error, setError] = useState('')
   const [taskBusy, setTaskBusy] = useState(false)
   const [sendingReply, setSendingReply] = useState(false)
@@ -42,22 +47,13 @@ export function Assistant() {
   const [notice, setNotice] = useState('')
   const [reviewEvent, setReviewEvent] = useState<ConnectorEvent | null>(null)
   const [reviewBusy, setReviewBusy] = useState(false)
+  const [composerIntent, setComposerIntent] = useState<'reply' | 'task'>('reply')
+  const manageSources = () => setView({ name: 'settings', section: 'connectors' })
 
   const refresh = async () => {
-    setLoading(true)
     setError('')
-    try {
-      setSnapshot(await api.getAssistantSnapshot())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
+    await refreshSnapshot()
   }
-
-  useEffect(() => {
-    void refresh()
-  }, [])
 
   const sourceRows = useMemo(() => {
     const rows = snapshot ? snapshot.connectors.map(sourceFromConnector) : []
@@ -77,7 +73,12 @@ export function Assistant() {
     // message count — not one row per message. Applies to the attention path too
     // (iMessage/Slack/etc. each emit one attention item per message). Keep the id
     // stable per conversation so selection survives new messages arriving.
-    return combineItemsByThread(mapped)
+    return combineItemsByThread(mapped).map((item) => {
+      const latest = snapshot.events.find((event) => event.id === item.eventId)
+      if (!item.threadKey || !latest || !['outbound', 'internal'].includes(latest.direction)) return item
+      const incoming = snapshot.events.filter((event) => event.threadKey === item.threadKey && event.direction === 'inbound').sort((a, b) => b.createdAt - a.createdAt)[0]
+      return incoming ? { ...item, from: incoming.actor || incoming.pluginName } : item
+    })
   }, [snapshot])
 
   const filteredItems = useMemo(() => (
@@ -99,6 +100,9 @@ export function Assistant() {
   const composerRef = useRef<HTMLTextAreaElement>(null)
   // A two-way comms thread (not docs/calendar) can take a direct reply (connector:reply).
   const canDirectReply = !!selectedItem?.threadKey && (['email', 'slack', 'discord', 'whatsapp', 'imessage'] as ConnectorId[]).includes(selectedItem.source)
+  useEffect(() => { setComposerIntent(canDirectReply ? 'reply' : 'task') }, [draft.scopeKey, canDirectReply])
+  const pendingEvents = useMemo(() => snapshot?.events.filter(isAwaitingApproval) ?? [], [snapshot])
+  const selectedPending = pendingEvents.filter((event) => event.threadKey === selectedItem?.threadKey && (event.outbound || event.outboundError || /send_requested|reply_requested|automation_result_ready/.test(event.action)))
 
   useEffect(() => {
     if (filteredItems[0] && !filteredItems.some((item) => item.id === selectedItemId)) {
@@ -141,13 +145,17 @@ export function Assistant() {
   // collapsed reply previews. Built from the same bubble mapping, converted to cards.
   const conversationCards = useMemo(() => conversationBubbles.map(bubbleToCard), [conversationBubbles])
 
-  const quickActions = quickActionsFor(selectedSource)
+  const quickActions = quickActionsFor(selectedItem?.source ?? selectedSource)
 
-  const draftTask = (text: string) => {
-    if (!draft.ready) return
+  const draftTask = (text: string, intent: 'reply' | 'task' = 'task') => {
+    if (!draft.ready) return false
+    if (taskText.trim() && taskText !== text && !confirm(tx('Replace your current draft with this suggestion?'))) return false
     const textarea = composerRef.current
     setTaskText(textarea ? insertTextareaText(textarea, text, 0, textarea.value.length) : text)
+    setComposerIntent(intent)
+    textarea?.focus()
     setNotice('')
+    return true
   }
 
   // Direct connector reply — send the user's OWN message to the thread (iMessage,
@@ -313,7 +321,7 @@ export function Assistant() {
   // Approving sends the draft through the connector approval path (e.g. email outbox);
   // discarding drops it. The snapshotted event carries the id to resolve.
   const approveDraft = (id: string) => {
-    const event = snapshot?.events.find((e) => e.id === id && e.requiresApproval)
+    const event = snapshot?.events.find((e) => e.id === id && isAwaitingApproval(e))
     if (!event) { setNotice(tx("This draft has no pending approval to resolve.")); return }
     setError(''); setNotice(''); setReviewEvent(event)
   }
@@ -352,8 +360,7 @@ export function Assistant() {
   const editDraft = (id: string) => {
     const text = draftTextFor(id)
     if (!text) { setNotice(tx("Nothing to edit in this draft.")); return }
-    draftTask(text)
-    setNotice(tx("Draft loaded into the composer — revise and send."))
+    if (draftTask(text, 'reply')) setNotice(tx("Draft loaded into the composer — revise and send."))
   }
   // Ask the assistant to redraft a pending reply in a different register.
   const redraftDraft = (id: string, how: string) => {
@@ -364,7 +371,7 @@ export function Assistant() {
   return (
     <div className="flex h-full min-h-0 flex-col bg-canvas">
       {reviewEvent && <OutboundApprovalDialog event={reviewEvent} busy={reviewBusy} error={error} onConfirm={(digest) => void confirmDraft(digest)} onClose={() => setReviewEvent(null)} />}
-      <main className="flex min-h-0 flex-1 flex-col">
+      <main className="scroll-thin flex min-h-0 flex-1 flex-col overflow-y-auto">
         <AssistantHeader
           snapshot={snapshot}
           selectedSourceRow={selectedSourceRow}
@@ -373,16 +380,24 @@ export function Assistant() {
           openSignals={openSignals}
           urgentCount={urgentCount}
           loading={loading}
+          refreshError={refreshError}
+          refreshedAt={refreshedAt}
+          paused={paused}
           syncingSources={syncingSources}
           syncingEmail={syncingEmail}
           onSyncAll={syncAllSources}
           onRefresh={refresh}
           onSyncEmail={syncEmail}
           onBriefMe={draftTask}
+          onManageSources={manageSources}
         />
 
-        {error && <div className="mx-8 mt-4 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-[13px] text-danger">{<OriginalDiagnostic>{error}</OriginalDiagnostic>}</div>}
-        {notice && <div className="mx-8 mt-4 rounded-lg border border-line bg-card px-3 py-2 text-[13px] text-ink-2">{notice}</div>}
+        {refreshError && snapshot && <div role="status" className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-warn/30 bg-warn/10 px-4 py-3 text-[13px] text-ink-2 sm:px-6">
+          <div><p className="font-medium">{tx('Inbox check failed. Your conversation and draft are still here.')}</p><details className="mt-1 text-[12px] text-ink-3"><summary className="cursor-pointer">{tx('Connection details')}</summary><p className="mt-1 break-words"><OriginalDiagnostic>{refreshError}</OriginalDiagnostic></p></details></div>
+          <Button size="sm" icon="refresh" disabled={loading} onClick={refresh}>{loading ? tx('Retrying…') : tx('Retry now')}</Button>
+        </div>}
+        {error && <div role="alert" className="shrink-0 border-b border-danger/25 bg-danger/10 px-4 py-3 text-[13px] text-danger sm:px-6">{<OriginalDiagnostic>{error}</OriginalDiagnostic>}</div>}
+        {notice && <div role="status" className="flex shrink-0 items-start justify-between gap-3 border-b border-line bg-card-2 px-4 py-2 text-[13px] text-ink-2 sm:px-6"><span>{notice}</span><button type="button" className="shrink-0 rounded px-1 underline focus-visible:outline-2 focus-visible:outline-accent" onClick={() => setNotice('')}>{tx('Dismiss')}</button></div>}
 
         {/* WhatsApp QR pairing surfaced inline: scan with your phone to pair. */}
         {Object.keys(whatsappQrs).length > 0 && (
@@ -400,28 +415,34 @@ export function Assistant() {
         <PendingApprovalsBar
           events={snapshot?.events ?? []}
           onResolved={() => { void refresh() }}
-          onOpen={(threadKey) => setSelectedItemId(threadKey)}
+          onOpen={(threadKey) => { setAssistantSource('all'); setSelectedItemId(threadKey) }}
         />
 
-        <div className="flex min-h-0 flex-1">
+        {!snapshot ? <InboxLoadState loading={loading} error={refreshError} onRetry={refresh} /> : <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           <TriageRail
             items={filteredItems}
             selectedItemId={selectedItem?.id ?? null}
             onSelect={setSelectedItemId}
+            selectedSource={selectedSource}
+            sources={sourceRows}
+            onSourceChange={setAssistantSource}
+            pendingThreadKeys={pendingEvents.map((event) => event.threadKey || event.id)}
           />
 
           {/* Discord-style thread view: each thread is an isolated context,
               messages render as left-aligned avatar-led cards, TensorFold marked "APP". */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <MessageCardView
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas">
+            {selectedItem && <ConversationHeading item={selectedItem} messageCount={conversationCards.length} pending={selectedPending.length} onReview={() => approveDraft(selectedPending[0].id)} />}
+            {selectedItem ? <MessageCardView
+              key={selectedItem.id}
               items={conversationCards}
-              emptyTitle={selectedItem ? 'No messages in this thread yet' : 'Pick a thread'}
-              emptyDetail={selectedItem ? 'Ask TensorFold to draft a reply below — source messages and TensorFold\'s draft appear here as cards.' : 'Select a thread on the left to view its messages. Each thread keeps its own context.'}
+              emptyTitle={tx('No messages in this conversation yet')}
+              emptyDetail={tx('Ask TensorFold to prepare a reply or check the inbox again.')}
               onApprove={approveDraft}
               onEdit={editDraft}
               onDiscard={discardDraft}
               onRedraft={redraftDraft}
-            />
+            /> : <EmptyInbox onManageSources={manageSources} onPrepareBriefing={() => { setComposerIntent('task'); composerRef.current?.focus() }} />}
 
             <Composer
               sendKey={settings?.uiPreferences?.sendKey}
@@ -430,6 +451,9 @@ export function Assistant() {
               draftReady={draft.ready && !!snapshot}
               draftStatus={draftContext.problem ?? draft.error ?? (!draft.ready || !snapshot ? 'Loading this conversation draft…' : !desktopDraftPort ? 'Draft kept for this session; use the desktop app to save across restarts.' : draft.saving || draft.dirty ? 'Saving draft…' : 'Draft saved on this device')}
               draftProblem={!!(draftContext.problem || draft.error)}
+              sessionOnly={!desktopDraftPort || !!draftContext.problem}
+              intent={composerIntent}
+              onIntentChange={setComposerIntent}
               onRetryDraft={() => { void draft.retry().catch(() => {}) }}
               taskText={taskText}
               setTaskText={setTaskText}
@@ -444,7 +468,7 @@ export function Assistant() {
               onDraftTask={draftTask}
             />
           </div>
-        </div>
+        </div>}
       </main>
     </div>
   )

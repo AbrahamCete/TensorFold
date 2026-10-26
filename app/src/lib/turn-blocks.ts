@@ -30,6 +30,22 @@ export interface TurnSummary {
   questionPending?: boolean
 }
 
+export type TurnActivityState = 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'review' | 'interrupted'
+
+// A finished turn is not necessarily verified; only its saved receipt can establish that outcome.
+export function turnActivityState(turn: TurnSummary, status?: string): TurnActivityState {
+  if (turn.running) return status === 'awaiting' ? 'waiting' : 'running'
+  const receipt = [...turn.work].reverse().find((item) => item.runReceipt)?.runReceipt
+  if (receipt?.verdict === 'cancelled') return 'stopped'
+  if (receipt?.verdict === 'failed') return 'failed'
+  if (receipt?.verdict === 'blocked' || receipt?.verdict === 'unverified') return 'review'
+  if (turn.work.some((item) => item.kind === 'tool' && ['pending', 'running', 'awaiting'].includes(item.state ?? ''))) {
+    return 'interrupted'
+  }
+  if (!receipt && turn.work.some((item) => item.kind === 'tool' && item.state === 'error')) return 'review'
+  return 'completed'
+}
+
 export type TurnRow =
   | { type: 'item'; item: TimelineItem; turn: TurnSummary }
   | { type: 'work'; turn: TurnSummary }

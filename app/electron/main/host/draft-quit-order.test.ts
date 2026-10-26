@@ -5,7 +5,7 @@ import ts from 'typescript'
 
 // Execute the production callbacks with inert lifecycle collaborators. Importing
 // main-app would launch Electron; AST extraction keeps this seam isolated.
-const file = path.join(process.cwd(), 'electron/main-app.ts')
+const file = path.join(process.cwd(), 'electron/main/composition/shutdown.ts')
 const tree = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true)
 function find(predicate: (node: ts.Node) => boolean): ts.Node {
   let result: ts.Node | undefined

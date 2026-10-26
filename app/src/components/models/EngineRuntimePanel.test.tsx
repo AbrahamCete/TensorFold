@@ -1,0 +1,158 @@
+import assert from 'node:assert/strict'
+import path from 'node:path'
+import clsx from 'clsx'
+import type { EngineSnapshot, PullProgress } from '../../lib/types'
+import * as format from '../../lib/engine-format'
+import { engineReadiness } from '../../lib/engine-readiness'
+import { engineBaseUrl, formatTokenRate } from '../../lib/engine-workspace'
+import { repoDisplayName } from '../../lib/turn-stats-line'
+import { flowTextFor } from '../../lib/preferences/flow-catalogue'
+import * as downloads from './download-display'
+import { jsx, load, nodes, text } from '../reading/reading-test-harness'
+
+const fixture: EngineSnapshot = {
+  status: {
+    available: true, version: 'fixture', binaryPath: null, state: 'ready', model: 'fixture/model', drafter: null,
+    port: 8000, startedAt: 1, readyAt: 2, message: null, logTail: [], totalMemoryBytes: 16 * 1024 ** 3,
+    memoryLimitBytes: 12 * 1024 ** 3, contextTokens: 32768,
+  },
+  installed: [{ repo: 'fixture/model', family: 'Fixture', modelType: 'fixture', format: '4-bit', contextTokens: 32768,
+    weightsBytes: 1024 ** 3, memoryFloorBytes: 2 * 1024 ** 3, fitsMemory: true, drafter: null, drafterInstalled: null }],
+  suggestions: [{ repo: 'fixture/model', title: 'Friendly fixture model', revision: null, note: '' }],
+  performance: { model: 'fixture/model', measuredAt: 3, decodeTokensPerSecond: 55, prefillTokensPerSecond: 100,
+    firstTokenMs: 10, completionTokens: 20 },
+  pulls: [], hubCache: '/synthetic/cache',
+}
+let snapshot: EngineSnapshot | null = structuredClone(fixture)
+let error: string | null = null
+let learningLocked = false
+const calls: string[] = []
+const engine = { ...format, useEngine: () => ({ snapshot, error }) }
+const shared = {
+  'react/jsx-runtime': jsx, clsx, '../../lib/engine': engine, '../../lib/engine-readiness': { engineReadiness },
+  '../../lib/engine-workspace': { engineBaseUrl, formatTokenRate },
+  '../../lib/turn-stats-line': { repoDisplayName }, '../ui': { Button: 'button' },
+  '../BrandMark': { BrandMark: 'brand-mark' }, '../../lib/icons': { Icon: 'icon' },
+  '../../lib/preferences/useFlowText': { useFlowText: () => flowTextFor('en') },
+}
+const { RuntimeSummary } = load(path.join(__dirname, 'RuntimeSummary.tsx'), shared)
+const { EngineRuntimePanel } = load(path.join(__dirname, 'EngineRuntimePanel.tsx'), {
+  ...shared, '../../lib/learning': { useLearning: () => ({ snapshot: {} }), learningBusy: () => learningLocked },
+  './CortheonToggle': { CortheonToggle: 'cortheon' }, './RuntimeSummary': { RuntimeSummary },
+})
+const { engineDotTone } = load(path.join(__dirname, 'EngineStatus.tsx'), shared)
+const { EngineChoice } = load(path.join(__dirname, 'EngineChoice.tsx'), { ...shared, './EngineStatus': { engineDotTone } })
+const props = { activeRuns: 0, compact: true, onApi: () => calls.push('api'), onWorkers: () => calls.push('workers'),
+  onUnload: () => calls.push('cancel'), onRetry: () => calls.push('retry'), onChat: () => calls.push('chat'),
+  onDetails: () => calls.push('details'), stopping: false }
+const render = (overrides = {}) => {
+  const node = EngineRuntimePanel({ ...props, ...overrides })
+  return node.type === RuntimeSummary ? RuntimeSummary(node.props) : node
+}
+const button = (tree: any, label: string) => nodes(tree).find(node => node.type === 'button' && text(node) === label)
+
+let tree = render()
+assert.match(text(tree), /Ready on this Mac/)
+assert.match(text(tree), /Friendly fixture model/)
+assert.match(text(tree), /Model memory floor/)
+assert.match(text(tree), /32,768 tokens/)
+assert.match(text(tree), /55 tok\/s/)
+button(tree, 'Chat with this model').props.onClick()
+assert.deepEqual(calls, ['chat'])
+assert.equal(button(tree, 'Cancel loading'), undefined)
+learningLocked = true
+assert.equal(button(render(), 'Chat with this model').props.disabled, true)
+learningLocked = false
+button(render({ minimal: true }), 'Use local API').props.onClick()
+assert.equal(calls.at(-1), 'api')
+
+snapshot!.status.state = 'starting'
+tree = render()
+assert.match(text(tree), /Loading model/)
+assert.match(text(tree), /Reported after loading/)
+assert.match(text(tree), /Measured after a request/)
+assert.doesNotMatch(text(tree), /55 tok\/s|32,768 tokens|Ready on this Mac/)
+button(tree, 'Cancel loading').props.onClick()
+assert.equal(calls.at(-1), 'cancel')
+assert.equal(button(render({ activeRuns: 1 }), 'Cancel loading').props.disabled, true)
+assert.equal(button(render({ stopping: true }), 'Cancelling…').props.disabled, true)
+
+snapshot!.status.state = 'failed'
+snapshot!.status.message = 'Synthetic load failure'
+tree = render()
+assert.match(text(tree), /Needs attention.*Synthetic load failure/)
+button(tree, 'Retry loading').props.onClick()
+assert.equal(calls.at(-1), 'retry')
+assert.equal(button(render({ activeRuns: 1 }), 'Retry loading').props.disabled, true)
+assert.equal(button(tree, 'Chat with this model'), undefined)
+
+snapshot!.status.available = false
+snapshot!.status.state = 'ready'
+snapshot!.status.message = 'Synthetic engine unavailable'
+tree = render()
+assert.match(text(tree), /Engine unavailable/)
+assert.match(text(tree), /Synthetic engine unavailable/)
+assert.doesNotMatch(text(tree), /55 tok\/s|32,768 tokens|Ready on this Mac/)
+assert.equal(button(tree, 'Chat with this model'), undefined)
+assert.equal(button(tree, 'Retry loading'), undefined)
+assert.ok(nodes(tree).some(node => node.props.className?.includes('bg-danger')))
+
+snapshot = structuredClone(fixture)
+error = 'Synthetic snapshot failure'
+tree = render()
+assert.match(text(tree), /Engine status unavailable/)
+assert.doesNotMatch(text(tree), /55 tok\/s|32,768 tokens|Ready on this Mac/)
+assert.equal(button(tree, 'Chat with this model'), undefined)
+error = null
+snapshot!.performance!.model = 'fixture/old-model'
+assert.doesNotMatch(text(render()), /55 tok\/s/)
+snapshot = null
+assert.doesNotThrow(() => render({ compact: false }))
+assert.match(text(render()), /Checking engine/)
+
+snapshot = structuredClone(fixture)
+snapshot.status.state = 'stopped'
+snapshot.status.model = null
+const choiceProps = { onOpenModels: () => calls.push('models'), onUse: (repo: string) => calls.push(repo) }
+tree = EngineChoice(choiceProps)
+assert.match(text(tree), /Friendly fixture model/)
+assert.match(text(tree), /Downloaded/)
+assert.match(text(tree), /loads when you send/)
+assert.doesNotMatch(text(tree), /Running on this Mac/)
+button(tree, 'Choose this model').props.onClick()
+assert.equal(calls.at(-1), 'fixture/model')
+snapshot.status.available = false
+assert.equal(button(EngineChoice(choiceProps), 'Choose this model').props.disabled, true)
+for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+  snapshot.installed[0].memoryFloorBytes = value
+  assert.doesNotMatch(text(EngineChoice(choiceProps)), /memory floor/)
+}
+snapshot.status.available = true
+snapshot.status.state = 'starting'
+assert.equal(button(EngineChoice(choiceProps), 'Choose this model').props.disabled, true)
+
+const { DownloadActivity } = load(path.join(__dirname, 'DownloadActivity.tsx'), {
+  ...shared, './ModelRows': { PullRow: 'pull-row' }, './download-display': downloads,
+})
+const pull: PullProgress = { repo: 'fixture/model', revision: 'fixed-revision', state: 'failed', phase: 'Failed',
+  receivedBytes: 100, totalBytes: 200, lastLine: null, message: 'Synthetic download error', startedAt: 1, finishedAt: 2 }
+const activityProps = { pulls: [pull], installed: fixture.installed, showCompleted: true, locked: false, minimal: false,
+  onAll: () => calls.push('all'), onCancel: async (repo: string) => calls.push(`cancel:${repo}`),
+  onRetry: async (repo: string, revision: string | null) => calls.push(`retry:${repo}@${revision}`),
+  onLoad: (repo: string) => calls.push(`load:${repo}`) }
+tree = DownloadActivity(activityProps)
+assert.match(text(tree), /Download needs attention/)
+await nodes(tree).find(node => node.type === 'pull-row')!.props.onRetry()
+assert.equal(calls.at(-1), 'retry:fixture/model@fixed-revision')
+pull.state = 'cancelled'
+assert.match(text(DownloadActivity(activityProps)), /Cached files are kept/)
+pull.state = 'done'
+tree = DownloadActivity(activityProps)
+assert.match(text(tree), /Download complete/)
+assert.equal(button(tree, 'Use model').props.disabled, false)
+button(tree, 'Use model').props.onClick()
+assert.equal(calls.at(-1), 'load:fixture/model')
+assert.equal(button(DownloadActivity({ ...activityProps, locked: true }), 'Use model').props.disabled, true)
+assert.equal(button(DownloadActivity({ ...activityProps, installed: [] }), 'Use model').props.disabled, true)
+assert.equal(DownloadActivity({ ...activityProps, showCompleted: false }), null)
+console.log('Actual model setup rendering: honest readiness/metrics, cancel/retry guards, explicit selection and download recovery.')

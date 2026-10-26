@@ -36,7 +36,7 @@ try {
   assert.equal(reserved, released)
   // Execute the actual main-app callback rather than a second copy of its policy.
   const ts = require('typescript')
-  const main = await fs.readFile(path.join(root, 'electron/main-app.ts'), 'utf8')
+  const main = await fs.readFile(path.join(root, 'electron/main/composition/device-services.ts'), 'utf8')
   const tree = ts.createSourceFile('main-app.ts', main, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
   let callback
   const visit = (node) => {

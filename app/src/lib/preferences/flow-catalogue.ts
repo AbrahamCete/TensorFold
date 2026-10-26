@@ -105,6 +105,8 @@ const entries = [
   ['first.validate', 'Validation and the first local load happen when you choose Send.', 'La validación y la primera carga local se realizan cuando eliges Enviar.'],
   ['first.providerSend', 'The provider generates a response only after you choose Send.', 'El proveedor genera una respuesta solo cuando eliges Enviar.'],
   ['first.loaded', 'The selected local model is loaded.', 'El modelo local seleccionado está cargado.'],
+  ['first.engineUnavailableAction', 'Check local engine', 'Comprobar el motor local'],
+  ['first.engineUnavailable', 'The local engine is unavailable. Open Models to review its status before sending a message.', 'El motor local no está disponible. Abre Modelos para revisar su estado antes de enviar un mensaje.'],
   ['first.review', 'Review your question, choose Send and read the first answer.', 'Revisa tu pregunta, elige Enviar y lee la primera respuesta.'],
   ['first.task', 'Choose a small first task', 'Elige una primera tarea pequeña'],
   ['first.plan.label', 'Plan something small', 'Planifica algo pequeño'],

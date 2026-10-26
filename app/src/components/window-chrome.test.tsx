@@ -18,7 +18,7 @@ const { TitleBar } = load('src/components/TitleBar.tsx', {
 const { ChatWorkspaceHeader } = load('src/components/full-workspace/ChatWorkspaceHeader.tsx', {
   ...common, '../../lib/store': { useStore }, '../../lib/ipc': { api }, '../../lib/icons': { Icon: fixture },
   '../../lib/preferences/hooks': { useUiText: () => (key: string) => key },
-  '../../lib/full-workspace-activity': { fullWorkspaceActivity: () => [] }, '../search/search-events': { requestConversationSearch: fixture },
+  '../work-activity/WorkActivityMenu': { WorkActivityMenu: fixture }, '../search/search-events': { requestConversationSearch: fixture },
   '../ui': { Button: fixture, Menu: fixture, MenuItem: fixture }, '../ThreadTrustBadge': { ThreadTrustBadge: fixture },
   '../CortheonBadge': { CortheonBadge: fixture }, './FullLayoutSwitch': { FullLayoutSwitch: fixture },
 })
