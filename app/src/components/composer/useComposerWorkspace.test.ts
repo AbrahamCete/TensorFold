@@ -77,5 +77,21 @@ firstPicker.resolve('/synthetic/older')
 await first
 work = view.render()
 assert.equal(work.workCwd, '/synthetic/newest', 'latest directory operation wins even before a rerender')
+
+const hostA = { id: 'host-a', label: 'Host A' }, hostB = { id: 'host-b', label: 'Host B' }
+state.sshHosts = [hostA, hostB]
+state.connectSshHost = () => {}
+work = view.render()
+work.overflowWorkspace.onHost(hostA, '/synthetic/shared-name')
+work = view.render()
+picker = deferred()
+const oldHostPick = work.pickFolder()
+work.overflowWorkspace.onHost(hostB, '/synthetic/shared-name')
+work = view.render()
+picker.resolve('/synthetic/late-local-choice')
+await oldHostPick
+work = view.render()
+assert.equal(work.workspace.hostId, 'host-b', 'a same-path host switch still changes ownership of pending operations')
+assert.equal(work.workCwd, '/synthetic/shared-name')
 view.unmount()
-console.log('Composer project/folder retention, branch fencing, unmount fencing and latest-directory selection pass')
+console.log('Composer project/folder retention, branch/SSH-host/unmount fencing and latest-directory selection pass')

@@ -163,7 +163,7 @@ export function MessageCardView({ items, emptyTitle, emptyDetail, onApprove, onE
 
   const threads = groupThreads(items)
   return (
-    <div ref={scrollRef} onScroll={onScroll} role="region" aria-label={tx('Conversation messages')} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-5 select-text sm:px-5">
+    <div ref={scrollRef} onScroll={onScroll} role="region" aria-label={tx('Conversation messages')} className="scroll-thin min-h-[160px] flex-1 overflow-y-auto px-3 py-3 select-text sm:px-5 md:min-h-0 md:py-5">
       <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
         {threads.map(({ root, replies }) => (
           <div key={root.id}>

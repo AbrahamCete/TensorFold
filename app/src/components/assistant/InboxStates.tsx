@@ -24,7 +24,7 @@ export function ConversationHeading({ item, messageCount, pending, onReview }: {
       <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-3"><span>{sourceName(item.source)}</span><span aria-hidden="true">·</span><span>{item.from}</span><span aria-hidden="true">·</span><span>{tx('Messages: {count}', { count: messageCount })}</span></div>
       <h3 className="mt-1.5 break-words text-[17px] font-semibold leading-snug tracking-[-0.01em] text-ink">{item.title || item.from}</h3>
     </div>
-    {pending > 0 && <Button size="sm" icon="shield" onClick={onReview}>{tx('Review pending message')}</Button>}
+    {pending > 0 && <Button className="hidden md:inline-flex" size="sm" icon="shield" onClick={onReview}>{tx('Review pending message')}</Button>}
   </div>
 }
 

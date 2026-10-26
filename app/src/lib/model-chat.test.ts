@@ -7,7 +7,7 @@ const existing = { id: 'existing', kind: 'chat', providerId: 'fixture/cloud', mo
 const settings = { providers: [{ id: 'tensorfold' }, { id: 'fixture/cloud' }],
   assistantProviderId: 'fixture/cloud', assistantModel: 'assistant-default', activeProviderId: 'tensorfold', activeModel: 'fixture/local' }
 let state: any
-let calls: string[]
+let calls: string[] = []
 let refuse = false
 let holdCreate = false
 let holdConfigure = false

@@ -65,7 +65,8 @@ export function useComposerWorkspace({ mode, thread, settings }: { mode: 'home' 
   // /workspace belongs to the guest; host Git/file pickers must never resolve a
   // coincidentally matching host directory for an isolated bot chat.
   const workCwd = thread?.bot?.executionTarget === 'vm' ? '' : mode === 'thread' && thread ? effectiveThreadCwd(thread, policyProject) : (workspace?.kind === 'ssh' ? workspace.path : (cwd || homeWorkspace?.path || projectRoot || ''))
-  const scope = `${mode}:${thread?.id ?? ''}:${activeProjectId ?? ''}:${effectiveHostId ?? ''}:${workspace?.kind ?? ''}:${workCwd}`
+  const scope = JSON.stringify([mode, thread?.id, activeProjectId, effectiveHostId, workspace?.kind,
+    workspace?.kind === 'ssh' ? workspace.hostId : null, workCwd])
   const currentScope = useRef(scope)
   currentScope.current = scope
   const generation = useRef(0)
