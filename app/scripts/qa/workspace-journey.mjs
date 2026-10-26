@@ -135,8 +135,9 @@ try {
   }
   pass('Built-in theme sweep', 'Production task renderer captured in TensorFold, Navy and Glass, light and dark; no body horizontal overflow. Native vibrancy is not exercised.')
   await page.evaluate(async () => {
+    const { PRESETS } = await import('/shared/theme-presets.ts')
     const state = globalThis.__store.getState()
-    await state.saveSettings({ ...state.settings, theme: 'light', preset: 'tensorfold' })
+    await state.saveSettings({ ...state.settings, theme: 'light', preset: 'tensorfold', light: { ...PRESETS.tensorfold.light }, dark: { ...PRESETS.tensorfold.dark } }, { silent: true })
   })
   for (const size of [{ width: 1024, height: 768 }, { width: 720, height: 520 }]) {
     await page.setViewportSize(size)
@@ -151,7 +152,7 @@ try {
     assert.ok(await page.getByRole('button', { name: 'Send', exact: true }).isVisible())
     await openFixtureThread(page, 'Add dark mode toggle')
   }
-  pass('Supported small windows', 'Task Send remains in view at1024×768 and the declared minimum720×520; Home is scrollable and its Send action remains reachable.')
+  pass('Supported small windows', 'Task Send remains in view at 1024×768 and the declared minimum 720×520; Home is scrollable and its Send action remains reachable.')
   const motion = await page.evaluate(() => [...document.querySelectorAll('.animate-spin, .animate-pulse')].map(element => getComputedStyle(element).animationName))
   assert.ok(motion.every(value => value === 'none'))
   pass('Reduced motion', 'Spin/pulse indicators stop animating when reduced motion is requested; status text remains.')

@@ -8,7 +8,7 @@ import { engineBaseUrl, formatTokenRate } from '../../lib/engine-workspace'
 import { repoDisplayName } from '../../lib/turn-stats-line'
 import { flowTextFor } from '../../lib/preferences/flow-catalogue'
 import * as downloads from './download-display'
-import { jsx, load, nodes, text } from '../reading/reading-test-harness'
+import { harness, jsx, load, nodes, settle, text } from '../reading/reading-test-harness'
 
 const fixture: EngineSnapshot = {
   status: {
@@ -40,7 +40,7 @@ const { EngineRuntimePanel } = load(path.join(__dirname, 'EngineRuntimePanel.tsx
   ...shared, '../../lib/learning': { useLearning: () => ({ snapshot: {} }), learningBusy: () => learningLocked },
   './CortheonToggle': { CortheonToggle: 'cortheon' }, './RuntimeSummary': { RuntimeSummary },
 })
-const { engineDotTone } = load(path.join(__dirname, 'EngineStatus.tsx'), shared)
+const { EngineDot, EngineStatusRow, engineDotTone } = load(path.join(__dirname, 'EngineStatus.tsx'), shared)
 const { EngineChoice } = load(path.join(__dirname, 'EngineChoice.tsx'), { ...shared, './EngineStatus': { engineDotTone } })
 const props = { activeRuns: 0, compact: true, onApi: () => calls.push('api'), onWorkers: () => calls.push('workers'),
   onUnload: () => calls.push('cancel'), onRetry: () => calls.push('retry'), onChat: () => calls.push('chat'),
@@ -155,4 +155,84 @@ assert.equal(calls.at(-1), 'load:fixture/model')
 assert.equal(button(DownloadActivity({ ...activityProps, locked: true }), 'Use model').props.disabled, true)
 assert.equal(button(DownloadActivity({ ...activityProps, installed: [] }), 'Use model').props.disabled, true)
 assert.equal(DownloadActivity({ ...activityProps, showCompleted: false }), null)
+
+const chipHooks = harness()
+let ejections = 0
+const { EngineChip } = load(path.join(__dirname, '../sidebar/EngineChip.tsx'), {
+  ...shared, react: chipHooks.hooks, '../../lib/ipc': { api: { engineUnload: async () => { ejections++ } } },
+})
+const chip = () => chipHooks.render(() => EngineChip({ active: false, onOpen: () => calls.push('chip-models') }))
+const pickerStatus = () => EngineStatusRow({ onOpenModels: () => calls.push('picker-models') })
+const hasReadyTone = (node: any) => nodes(node).some(child => child.props.className?.includes('bg-positive'))
+const assertUnavailable = () => {
+  const compact = chip()
+  assert.match(text(compact), /Engine status unavailable/)
+  assert.doesNotMatch(text(compact), /Loaded|fixture\/model/)
+  assert.equal(button(compact, 'Eject'), undefined)
+  assert.equal(hasReadyTone(compact), false)
+  assert.equal(hasReadyTone(EngineDot()), false)
+  assert.equal(hasReadyTone(pickerStatus()), false)
+}
+
+snapshot = structuredClone(fixture)
+error = 'Synthetic stale ready snapshot'
+assertUnavailable()
+assert.equal(EngineDot().props.title, 'Engine status unavailable')
+assert.equal(EngineDot().props.role, 'img')
+assert.equal(EngineDot().props['aria-label'], 'Engine status unavailable')
+assert.match(text(pickerStatus()), /Engine status unavailable/)
+error = ''
+assertUnavailable()
+error = null
+snapshot.status.available = false
+assertUnavailable()
+assert.match(EngineDot().props.title, /Engine missing/)
+assert.match(text(pickerStatus()), /Engine missing/)
+
+snapshot = structuredClone(fixture)
+for (const model of [null, '', '   ']) {
+  snapshot.status.model = model
+  assert.match(text(chip()), /No model loaded/)
+  assert.equal(button(chip(), 'Eject'), undefined)
+  assert.equal(hasReadyTone(chip()), false)
+  assert.equal(EngineDot().props.title, 'No model loaded')
+  assert.match(text(pickerStatus()), /No model loaded/)
+  assert.equal(hasReadyTone(EngineDot()), false)
+}
+
+snapshot = null
+error = 'Synthetic missing snapshot'
+assertUnavailable()
+error = null
+assert.match(text(chip()), /Checking engine/)
+assert.equal(button(chip(), 'Eject'), undefined)
+
+snapshot = structuredClone(fixture)
+tree = chip()
+assert.match(text(tree), /Loaded/)
+assert.equal(hasReadyTone(tree), true)
+assert.equal(hasReadyTone(EngineDot()), true)
+assert.equal(hasReadyTone(pickerStatus()), true)
+assert.match(EngineDot().props.title, /Running fixture\/model/)
+assert.match(EngineDot().props['aria-label'], /Running fixture\/model/)
+const chipButtons = nodes(tree).filter(node => node.type === 'button')
+assert.equal(chipButtons.length, 2, 'Navigation and Eject are native sibling buttons')
+assert.ok(chipButtons.every(node => node.props.type === 'button' && nodes(node).filter(child => child.type === 'button').length === 1))
+assert.ok(!nodes(tree).some(node => node.props.role === 'button'), 'No synthetic button contains another button')
+assert.match(button(tree, 'Eject').props.className, /group-focus-within:opacity-100/)
+assert.match(chipButtons[0].props.className, /focus-visible:ring/)
+chipButtons[0].props.onClick()
+assert.equal(calls.at(-1), 'chip-models')
+button(tree, 'Eject').props.onClick()
+await settle()
+assert.equal(ejections, 1)
+assert.equal(calls.at(-1), 'chip-models', 'Eject does not bubble into model navigation')
+button(pickerStatus(), 'Models').props.onClick()
+assert.equal(calls.at(-1), 'picker-models')
+error = 'Synthetic second read failure'
+assertUnavailable()
+error = null
+assert.match(text(chip()), /Loaded/, 'A fresh successful read restores readiness and Eject')
+assert.ok(button(chip(), 'Eject'))
+assert.equal(hasReadyTone(EngineDot()), true)
 console.log('Actual model setup rendering: honest readiness/metrics, cancel/retry guards, explicit selection and download recovery.')

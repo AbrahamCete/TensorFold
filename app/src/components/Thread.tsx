@@ -1,4 +1,3 @@
-import { requestMessageQuote } from '../lib/message-quotes'
 import { CollectionPicker } from './documents/CollectionPicker'
 import { ConversationOutline } from './search/ConversationOutline'
 import { useAuthoredText } from '../lib/preferences/useAuthoredText'
@@ -11,14 +10,14 @@ import { scrollTranscriptTarget } from './search/scroll-transcript-target'
 import { ReadableExportDialog } from './reading/ReadableExportDialog'
 import { requestConversationSearch } from './search/search-events'
 import { useConversationSearchTarget } from './search/useConversationSearchTarget'
-import { SentUserMessage, EarlierMessageRevisions } from './SentUserMessage'
+import { EarlierMessageRevisions } from './SentUserMessage'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { threadPendingApproval } from '../lib/thread-approval'
 import { useStore } from '../lib/store'
 import { api } from '../lib/ipc'
 import clsx from 'clsx'
 import { Composer } from './Composer'
-import { AssistantMessage, CueBubble, ErrorBlock, ToolCard, VisualizationCard } from './timeline'
+import { CueBubble, ErrorBlock, ToolCard, VisualizationCard } from './timeline'
 import { ThreadPanel } from './ThreadPanel'
 import { TaskContextBar } from './thread-panel/TaskContextBar'
 import { ConversationTools } from './thread-panel/ConversationTools'
@@ -32,7 +31,7 @@ import { effectiveThreadCwd, effectiveThreadWorkspace } from '../lib/thread-work
 import { changeTotals, threadChangeTurns } from '../lib/thread-changes'
 import { TurnWorkRow } from './turn/TurnWorkRow'
 import { EditedFilesCard } from './turn/EditedFilesCard'
-import { TurnStatsLine } from './turn/TurnStatsLine'
+import { TranscriptMessage } from './turn/TranscriptMessage'
 import { TurnOutcome } from './turn/TurnOutcome'
 import { QuestionCard } from './user-question/QuestionCard'
 import { BotChatContext } from './bots/BotChatContext'
@@ -145,17 +144,10 @@ export function ThreadView({ threadId, simpleLayout = false }: { threadId: strin
 
   if (!thread) return null
   const renderTimelineItem = (item: TimelineItem, turn: TurnSummary) => {
-    if (item.kind === 'user') return <SentUserMessage thread={thread} item={item} busy={busy} onQuote={!thread.orchestratorHostId ? selection => { void requestMessageQuote({ threadId: thread.id, itemId: item.id, ...(selection ? { selection } : {}) }) } : undefined} />
+    if (item.kind === 'user' || item.kind === 'assistant') return <TranscriptMessage threadId={thread.id}
+      orchestratorHostId={thread.orchestratorHostId} item={item} busy={busy}
+      active={st === 'streaming' && item.id === lastAssistantId} showStats={item.id === turn.answerId && !turn.running} />
     if (item.kind === 'cue') return <CueBubble text={item.text || ''} state={item.state} />
-    if (item.kind === 'assistant') return (
-      <AssistantMessage
-        text={item.text || ''}
-        onQuote={!thread.orchestratorHostId ? selection => { void requestMessageQuote({ threadId: thread.id, itemId: item.id, ...(selection ? { selection } : {}) }) } : undefined}
-        meta={item.meta}
-        active={st === 'streaming' && item.id === lastAssistantId}
-        footer={item.stats && item.id === turn.answerId && !turn.running ? <TurnStatsLine stats={item.stats} /> : undefined}
-      />
-    )
     if (item.kind === 'tool' && item.tool === 'ask_user' && item.question) return <QuestionCard item={item} />
     if (item.kind === 'tool') return <ToolCard item={item} />
     if (item.kind === 'visualization') return <VisualizationCard item={item} />

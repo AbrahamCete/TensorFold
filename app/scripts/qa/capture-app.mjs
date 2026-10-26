@@ -54,7 +54,7 @@ try {
   await page.getByTestId('local-runtime').waitFor()
   await capture(page, '10-models', 'Production Models view; demo engine snapshot, not GPU inference.')
   await page.evaluate(() => globalThis.__store.getState().setView({ name: 'assistant' }))
-  await page.getByRole('heading', { name: /^(Assistant|Conversation)$/ }).waitFor()
+  await page.getByRole('heading', { name: /^(Your inbox|Assistant|Conversation)$/ }).waitFor()
   await page.waitForTimeout(250)
   await capture(page, '11-assistant', 'Production Assistant; existing synthetic connector inbox, no account connection or external sync.')
 

@@ -76,6 +76,28 @@ async function verifyConversationScroll() {
   assert.ok(Math.abs(remounted.offset - before.offset) <= 1, JSON.stringify({ before, remounted }))
   await page.evaluate(() => globalThis.__store.setState(s => ({ status: { ...s.status, 'qa-scroll': 'streaming' }, threads: s.threads.map(t => t.id !== 'qa-scroll' ? t : { ...t, timeline: t.timeline.map((item, index) => index === t.timeline.length - 1 ? { ...item, text: item.text + '\n\nNew streaming content below the reader.' } : item) }) })))
   const streamed = await read(); assert.ok(Math.abs(streamed.top - before.top) <= 1, JSON.stringify({ before, streamed }))
+  const composer = page.getByRole('textbox', { name: 'Message composer', exact: true })
+  const draftText = 'Draft smoke: keep every character while a synthetic response streams.'
+  await page.evaluate(() => {
+    globalThis.__qaStreamingTicks = 0
+    globalThis.__qaStreamingTimer = setInterval(() => {
+      globalThis.__qaStreamingTicks += 1
+      globalThis.__store.setState(s => ({ threads: s.threads.map(t => t.id !== 'qa-scroll' ? t : {
+        ...t, timeline: t.timeline.map((item, index) => index === t.timeline.length - 1 ? { ...item, text: `${item.text}.` } : item),
+      }) }))
+    }, 40)
+  })
+  try {
+    await composer.pressSequentially(draftText, { delay: 5, timeout: 60000 })
+  } finally {
+    await page.evaluate(() => clearInterval(globalThis.__qaStreamingTimer))
+  }
+  const streamingUpdates = await page.evaluate(() => globalThis.__qaStreamingTicks)
+  assert.ok(streamingUpdates >= 2, 'Typing overlaps repeated synthetic streaming updates')
+  assert.equal(await composer.inputValue(), draftText)
+  const typedPosition = await read()
+  assert.equal(typedPosition.anchor, before.anchor)
+  assert.ok(Math.abs(typedPosition.offset - before.offset) <= 1, JSON.stringify({ before, typedPosition }))
   await page.evaluate(() => globalThis.__store.setState(s => ({
     status: { ...s.status, 'qa-scroll': 'awaiting' }, approvals: { ...s.approvals, 'qa-scroll': [{ itemId: 'qa-approval', callId: 'qa-approval' }] },
     threads: s.threads.map(t => t.id !== 'qa-scroll' ? t : { ...t, timeline: [...t.timeline, { id: 'qa-approval', approvalId: 'qa-approval', kind: 'tool', tool: 'run_command', title: 'Run', command: 'npm test', state: 'awaiting', output: 'Synthetic UI fixture: approval is pending.' }] }),
@@ -89,8 +111,10 @@ async function verifyConversationScroll() {
   await page.evaluate(() => globalThis.__store.setState(s => ({ threads: s.threads.map(t => t.id !== 'qa-scroll' ? t : { ...t, timeline: [...t.timeline, { id: 'qa-follow-check', kind: 'assistant', text: 'A final synthetic message checks following after Jump to latest.' }] }) })))
   await page.getByText('A final synthetic message checks following after Jump to latest.', { exact: true }).waitFor()
   await page.waitForFunction(() => { const el = document.querySelector('[data-conversation-id="qa-scroll"]'); return el.scrollHeight - el.scrollTop - el.clientHeight <= 1 })
+  assert.equal(await composer.inputValue(), draftText)
   assert.deepEqual(errors, [])
-  acceptance.push({ journey: 'Conversation reading position', status: 'passed', before, switched, remounted, streamed, approval, loadedRows: before.count, followingResumed: true })
+  acceptance.push({ journey: 'Conversation reading position', status: 'passed', before, switched, remounted, streamed, approval, loadedRows: before.count, followingResumed: true,
+    typingSmoke: { charactersTyped: draftText.length, syntheticUpdateIntervalMs: 40, typingDelayMs: 5, streamingUpdates, exactDraftRetained: true, typedPosition, messageSubmitted: false, performanceBenchmark: false } })
   await page.close()
 }
 
@@ -133,6 +157,7 @@ async function verifyChanges() {
   await page.getByRole('button', { name: /Review changes/ }).click()
   await filter.fill('App.tsx')
   await capture(page, 'changes-small-after', 'The same actual Changes component at 1024×768.')
+  await pane.getByRole('button', { name: 'Close pane', exact: true }).click()
   const measurements = []
   await page.setViewportSize({ width: 720, height: 520 })
   for (const collapsed of [false, true]) {
@@ -144,10 +169,23 @@ async function verifyChanges() {
     assert.ok(geometry.x >= 0 && geometry.right <= 721 && geometry.document <= geometry.viewport, JSON.stringify(geometry))
     const diff = await pane.getByRole('region').evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }))
     assert.ok(diff.scroll <= diff.client + 1, JSON.stringify(diff))
+    const tabLabels = await pane.getByRole('tab').evaluateAll(tabs => tabs.map(tab => {
+      const label = [...tab.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim())
+      const range = document.createRange(); range.selectNodeContents(label)
+      return { label: label.textContent, lines: range.getClientRects().length }
+    }))
+    assert.ok(tabLabels.every(tab => tab.lines === 1), JSON.stringify(tabLabels))
+    const tabs = pane.getByRole('tab')
+    await tabs.first().focus()
+    for (let index = 0; index < await tabs.count(); index += 1) {
+      assert.equal(await tabs.nth(index).evaluate(tab => tab === document.activeElement), true)
+      await tabs.nth(index).press('Tab')
+    }
+    assert.equal(await pane.getByRole('button', { name: 'Close pane', exact: true }).evaluate(button => button === document.activeElement), true)
     await wrap.press('Enter'); await wrap.press('Enter')
     await page.mouse.move(5, 5)
     await capture(page, `review-minimum-sidebar-${collapsed ? 'closed' : 'open'}`, 'Actual desktop minimum 720×520; sidebar state named in filename; keyboard-tested controls remain within the window.')
-    measurements.push({ sidebar: collapsed ? 'closed' : 'open', ...geometry, diff })
+    measurements.push({ sidebar: collapsed ? 'closed' : 'open', ...geometry, diff, tabLabels, keyboardReachesClose: true })
     await pane.getByRole('button', { name: 'Close pane', exact: true }).click()
     await page.getByRole('button', { name: /Worked.*3 steps.*Finished/ }).last().click()
     await page.getByRole('button', { name: /Edit src\/App.tsx Completed/ }).click()
@@ -238,7 +276,8 @@ try {
   await browser.close()
   if (trackedErrors.flat().length) failure ??= `Renderer errors: ${trackedErrors.flat().join('; ')}`
   await writeFile(path.join(output, 'transcript-review-receipt.json'), JSON.stringify({
-    status: failure ? 'failed' : 'passed', capturedAt: new Date().toISOString(), browserVersion,
+    status: failure ? 'failed' : 'passed', capturedAt: new Date().toISOString(), browserVersion, baseUrl,
+    rendererRevision: process.env.TENSORFOLD_QA_REVISION || undefined,
     renderer: 'Actual TensorFold Vite renderer', data: 'Built-in browser demo and explicitly synthetic UI fixtures',
     nativeVerified: false, tasksExecuted: false, approvalsSubmitted: false,
     acceptance, captures, pageErrors: trackedErrors.flat(), failure,

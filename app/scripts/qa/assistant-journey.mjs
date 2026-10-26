@@ -174,6 +174,7 @@ try {
 
   await page.evaluate(async () => { const state = globalThis.__store.getState(); await state.saveSettings({ ...state.settings, theme: 'dark' }) })
   await page.waitForFunction(() => document.documentElement.classList.contains('dark'))
+  await page.getByText('Settings saved', { exact: true }).waitFor({ state: 'hidden', timeout: 12_000 })
   await page.setViewportSize({ width: 1024, height: 768 })
   await capture(page, '07-inbox-small-dark', 'Assistant inbox and actionable reply at 1024×768 in the actual dark theme.')
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
@@ -189,7 +190,9 @@ try {
     await send.scrollIntoViewIfNeeded()
     const box = await send.boundingBox()
     assert.ok(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 720 && box.y + box.height <= 520)
+    assert.equal(await send.evaluate(element => { const box = element.getBoundingClientRect(); return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) }), true)
     assert.equal(await reply().inputValue(), replyText)
+    assert.ok((await page.getByRole('region', { name: 'Conversation messages' }).boundingBox())?.height >= 160)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
     await capture(page, `11-minimum-${collapsed ? 'collapsed' : 'expanded'}`, 'Native minimum 720×520; responsive conversation selector and reply action remain reachable, with ordinary vertical scrolling when needed.')
   }
