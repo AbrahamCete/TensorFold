@@ -212,8 +212,8 @@ export function Composer({ mode, thread, seed }: { mode: 'home' | 'thread'; thre
     }
     prevBusy.current = busy
   }, [busy, st, botBlocked, thread?.id, mode]) // eslint-disable-line react-hooks/exhaustive-deps
-  // Stale queue entries make no sense on a different thread.
-  useEffect(() => { quoteEditingRef.current = false; setQuoteEditing(false); queueScopeRef.current = draft.scopeKey; queuedRef.current = []; setQueued([]); queuedDraftTokens.current.clear(); queueEditingRef.current = null; prevBusy.current = false }, [draft.scopeKey])
+  // A new scope drops stale queue entries and owns its current busy state for the next completion.
+  useEffect(() => { quoteEditingRef.current = false; setQuoteEditing(false); queueScopeRef.current = draft.scopeKey; queuedRef.current = []; setQueued([]); queuedDraftTokens.current.clear(); queueEditingRef.current = null; prevBusy.current = busy }, [draft.scopeKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Expand any literal $skill tokens (for enabled skills) to their body text.
   const expandSkills = (s: string) => {
