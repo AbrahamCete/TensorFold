@@ -61,9 +61,13 @@ let bytes = 0; process.stdin.on('data', chunk => bytes += chunk.length); process
   service.shutdown()
   assert.equal((await service.extract({ name: 'x', mime: 'image/png', bytes: [1, 2] })).ok, false)
 
+  type ControlledChild = Omit<ChildProcessWithoutNullStreams, 'exitCode' | 'signalCode'> & {
+    exitCode: number | null
+    signalCode: NodeJS.Signals | null
+  }
   const controlled: Array<{ child: ChildProcessWithoutNullStreams; signals: Array<NodeJS.Signals | number> }> = []
-  const controlledOutput = (chunks: Buffer[]) => {
-    const child = new ChildProcess() as ChildProcessWithoutNullStreams
+  const controlledOutput = (chunks: Buffer[]): ChildProcessWithoutNullStreams => {
+    const child = new ChildProcess() as ControlledChild
     const stdout = new PassThrough()
     child.stdin = new PassThrough()
     child.stdout = stdout
