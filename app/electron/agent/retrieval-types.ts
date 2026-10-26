@@ -120,4 +120,3 @@ export interface WorkspaceRetrievalIndexInput extends RetrievalIndexInput {
   documentSettings?: DocumentConnectorSettings
   browserSettings?: BrowserConnectorSettings
 }
-

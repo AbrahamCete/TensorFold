@@ -44,7 +44,7 @@ export interface SandboxArtifactBaseline {
   inputSnapshot: SandboxFileArtifact[]
   outputFiles: SandboxFileArtifact[]
   capturedAt: number
-  
+
   workspaceSnapshot?: SandboxWorkspaceSnapshot
 }
 
@@ -76,10 +76,10 @@ export interface SandboxedCommandResult {
   sandboxed: boolean
   profile: SandboxProfileId | 'unsandboxed'
   implementation: 'macos-sandbox-exec' | 'unsandboxed'
-  
+
   redactionCount?: number
   artifacts?: SandboxArtifactBundle
-  
+
   changedPaths?: string[]
 }
 
@@ -91,4 +91,3 @@ export interface SandboxedCommandOptions {
   profile?: SandboxProfileId
   signal?: AbortSignal
 }
-

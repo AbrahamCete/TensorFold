@@ -122,4 +122,3 @@ export async function rollbackLoopWorkspace(cwd: string, target: string, run: Lo
   const status = await run('git status --porcelain', cwd)
   if (status.code !== 0 || status.stdout.trim()) throw commandFailure('rollback did not leave a clean worktree', status)
 }
-

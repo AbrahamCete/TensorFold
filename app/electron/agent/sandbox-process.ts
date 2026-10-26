@@ -92,4 +92,3 @@ export function sandboxCommandEnv(cwd: string): NodeJS.ProcessEnv {
   }
   return env
 }
-

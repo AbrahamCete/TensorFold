@@ -292,4 +292,3 @@ function patchLines(text: string): string[] {
   if (lines.at(-1) === '') lines.pop()
   return lines
 }
-
