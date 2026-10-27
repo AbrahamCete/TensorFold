@@ -13,6 +13,10 @@ assert.equal(benchmarkCells(parsed)[0].deliveryTokensPerSecond?.median, 100)
 assert.equal(benchmarkCells(parsed)[0].firstTextSeconds?.median, 0.30000000000000004)
 assert.equal(parsed.samples[0].server_decode_seconds, null, 'missing engine duration stays unknown')
 assert.equal(parseBenchmarkReceipt(JSON.stringify(receipt), { model: receipt.model.repo_id, serial: false, engineVersion: BENCHMARK_ENGINE_VERSION }).suite.id, 'community-v2')
+const beta10 = structuredClone(receipt)
+beta10.runtime.tensorfold_version = '1.1.4'
+assert.equal(benchmarkProtocolComplete(parseBenchmarkReceipt(JSON.stringify(beta10))), true, 'saved beta.10 v2 receipts remain readable')
+assert.throws(() => parseBenchmarkReceipt(JSON.stringify(beta10), { model: beta10.model.repo_id, serial: false, engineVersion: BENCHMARK_ENGINE_VERSION }), /invalid|unsupported/, 'a saved beta.10 receipt cannot substitute for a 1.1.6 run')
 for (const version of ['1.0.12', '1.1.0']) {
   const historical = structuredClone(receipt)
   historical.runtime.tensorfold_version = version
@@ -48,6 +52,7 @@ for (const mutate of [
   (value: any) => { value.settings.context_tokens = 8192 },
   (value: any) => { value.runtime.dependencies.private_path = '/private/operator' },
   (value: any) => { value.runtime.tensorfold_version = '9.9.9' },
+  (value: any) => { value.runtime.tensorfold_version = '1.1.7' },
   (value: any) => { value.runtime.tensorfold_version = '1.1.0-preview' },
   (value: any) => { value.runtime.tensorfold_version = '1.1.0' },
   (value: any) => { delete value.settings.kv_cache },

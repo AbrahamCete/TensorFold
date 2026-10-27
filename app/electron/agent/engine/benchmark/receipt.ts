@@ -35,7 +35,7 @@ export function parseBenchmarkReceipt(raw: string, expected?: { model: string; s
   object(runtime, ['tensorfold_version', 'backend', 'python_version', 'platform', 'dependencies'])
   text(runtime.tensorfold_version); text(runtime.python_version)
   if (!supportedBenchmarkReceiptVersion(runtime.tensorfold_version) || expected?.engineVersion !== undefined && runtime.tensorfold_version !== expected.engineVersion || runtime.python_version !== 'none' || !['mlx', 'cuda', 'rocm'].includes(runtime.backend) || runtime.platform !== (runtime.backend === 'mlx' ? 'macos' : 'linux')) invalid()
-  if (v2 !== (runtime.tensorfold_version === '1.1.4')) invalid()
+  if (v2 !== ['1.1.4', '1.1.6'].includes(runtime.tensorfold_version)) invalid()
   if (!runtime.dependencies || typeof runtime.dependencies !== 'object' || Array.isArray(runtime.dependencies) || Object.keys(runtime.dependencies).some(key => !['mlx', 'mlx_lm', 'torch', 'triton', 'cuda', 'driver'].includes(key))) invalid()
   Object.values(runtime.dependencies).forEach(item => text(item, true))
   const model = value.model
