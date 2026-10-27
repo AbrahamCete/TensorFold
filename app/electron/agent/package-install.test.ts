@@ -67,7 +67,7 @@ async function main() {
     'npm ci example', 'npm install --registry=https://example.com', 'npm install --omit=dev=other',
   ]) assert.throws(() => parsePackageInstallCommand(command), Error, command)
 
-  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'tensorfold-dependency-test-'))
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'tensorfold-dependency-test-')))
   try {
     const root = path.join(base, 'monorepo')
     await writeJson(path.join(root, 'package.json'), {
@@ -86,6 +86,7 @@ async function main() {
     let prepared = 0
     const checkedNpm: IsolatedPackageRunner = async (input) => {
       prepared++
+      assert.equal(path.dirname(input.cwd), path.dirname(root), 'the isolated stage is a sibling of the denied project')
       assert.equal(await fs.stat(input.cwd).then((value) => value.mode & 0o777), 0o700)
       await assert.rejects(fs.access(path.join(input.cwd, '.npmrc')))
       await assert.rejects(fs.access(path.join(input.cwd, 'packages/workspace/index.js')))
@@ -285,7 +286,7 @@ async function main() {
     const remove = fs.rm
     let cleanupAttempts = 0
     fs.rm = (async (target: any, options: any) => {
-      if (path.dirname(String(target)) === cleanupRoot && path.basename(String(target)).startsWith('.tensorfold-install-')) {
+      if (path.dirname(String(target)) === path.dirname(cleanupRoot) && path.basename(String(target)).startsWith('.tensorfold-install-')) {
         cleanupAttempts++
         if (cleanupAttempts <= 2) throw Object.assign(new Error('Synthetic busy directory during cleanup'), { code: 'ENOTEMPTY' })
       }
@@ -305,7 +306,7 @@ async function main() {
     await writeJson(path.join(replacedRoot, 'package.json'), { name: 'replacement-fixture', version: '1.0.0' })
     let replacedStage = ''
     fs.rm = (async (target: any, options: any) => {
-      if (!replacedStage && path.dirname(String(target)) === replacedRoot && path.basename(String(target)).startsWith('.tensorfold-install-')) {
+      if (!replacedStage && path.dirname(String(target)) === path.dirname(replacedRoot) && path.basename(String(target)).startsWith('.tensorfold-install-')) {
         replacedStage = String(target)
         await fs.rename(target, `${target}-previous`)
         await fs.mkdir(target)

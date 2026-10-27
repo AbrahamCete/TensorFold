@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { SANDBOX_PROFILES, buildSandboxArtifactBundle, canUseMacSandbox, captureSandboxArtifactBaseline, summarizeSandboxArtifactBundle, macSandboxProfile, runSandboxedCommand, sandboxCommandEnv, sandboxProfileForCommand, taskSandboxNetworkOverride } from './sandbox'
 import { commandShell } from './cli-path'
+import { preparePackageInstallLayout } from './package-install-layout'
 
 async function main() {
   // Keep the fixture outside both the repo (mutation snapshots must not see the
@@ -138,11 +139,24 @@ async function main() {
   }
   assert.equal(await fs.readFile(path.join(packageHost, 'package.json'), 'utf8'), packageJson)
   assert.deepEqual((await fs.readdir(packageHost)).filter((name) => name.startsWith('.tensorfold-')), [])
-  const stage = await fs.mkdtemp(path.join(packageHost, '.tensorfold-install-'))
+  const layout = await preparePackageInstallLayout(packageHost)
+  const stage = layout.stage
   const isolated = macSandboxProfile(stage, 'package-install', [], true, packageHost)
   assert.match(isolated, /deny file-read-data file-write\*/)
   assert.ok(isolated.indexOf('(deny file-read-data file-write*') > isolated.indexOf('(allow file-read*'))
   assert.ok(isolated.endsWith(`(allow file-read* file-write* (subpath ${JSON.stringify(stage)}))`))
+  if (canUseMacSandbox()) {
+    const probe = spawnSync('/usr/bin/sandbox-exec', ['-p', isolated, process.execPath, '-e', `
+      const fs = require('node:fs'), assert = require('node:assert/strict');
+      assert.equal(process.cwd(), process.argv[1]);
+      assert.throws(() => fs.readFileSync(process.argv[2]), { code: 'EPERM' });
+      assert.throws(() => fs.writeFileSync(process.argv[2], 'changed'), { code: 'EPERM' });
+      fs.writeFileSync('stage-write.txt', 'owned stage');
+    `, stage, path.join(realpathSync(packageHost), 'package.json')], { cwd: stage, encoding: 'utf8' })
+    assert.equal(probe.status, 0, probe.stderr)
+    assert.equal(await fs.readFile(path.join(stage, 'stage-write.txt'), 'utf8'), 'owned stage')
+  }
+  await fs.rm(stage, { recursive: true, force: true })
   assert.equal(sandboxProfileForCommand('npm ci'), 'package-install')
   assert.equal(sandboxProfileForCommand('npm rebuild'), 'build-test')
   await fs.rm(packageHost, { recursive: true, force: true })

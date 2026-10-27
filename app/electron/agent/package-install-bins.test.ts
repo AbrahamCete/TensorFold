@@ -23,7 +23,7 @@ async function json(target: string, value: unknown) {
 }
 
 async function main() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tensorfold-local-bin-test-'))
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'tensorfold-local-bin-test-')))
   try {
     await json(path.join(root, 'package.json'), {
       name: 'bin-fixture', version: '1.0.0', private: true, workspaces: ['packages/*'],

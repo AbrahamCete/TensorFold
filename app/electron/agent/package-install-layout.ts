@@ -250,7 +250,7 @@ export async function preparePackageInstallLayout(rootPath: string): Promise<Pac
     if (snapshot) validateInstallLockfile(snapshot, packages)
     files.set(name, snapshot)
   }
-  const stage = await fs.mkdtemp(path.join(root, '.tensorfold-install-'))
+  const stage = await fs.mkdtemp(path.join(path.dirname(root), '.tensorfold-install-'))
   await fs.chmod(stage, 0o700)
   try {
     await fs.mkdir(path.join(stage, '.npm-tmp'), { mode: 0o700 })

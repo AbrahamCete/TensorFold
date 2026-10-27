@@ -32,7 +32,9 @@ The existing saved approval requirement for package installation remains in plac
 
 The networked process receives the selected package manifests, npm lockfiles, empty npm
 configuration files and inert placeholders for declared local executables. It uses a private
-temporary directory and cache. Existing source files,
+temporary directory and cache in an owned sibling stage beside the selected project. The parent
+directory must permit creating this private stage. Keeping it outside the denied project lets
+macOS resolve the process working directory without granting access to project files. Existing source files,
 credentials and the user's npm cache are not imported. The macOS profile explicitly denies reads
 and writes to the original project while allowing the owned stage, including when the project is
 inside an otherwise writable temporary directory.
