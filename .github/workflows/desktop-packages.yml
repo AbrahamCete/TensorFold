@@ -100,7 +100,7 @@ jobs:
           sub-packages: '["nvcc", "cudart"]'
       - name: Build native 1.1.6 with CUDA images
         working-directory: engine-source
-        run: zig build native -Dversion=1.1.6 -Doptimize=ReleaseFast "-Dnvcc=$env:CUDA_PATH/bin/nvcc.exe" '-Dsm=80,86,120,121' -j2
+        run: zig build native '-Dversion=1.1.6' '-Doptimize=ReleaseFast' "-Dnvcc=$env:CUDA_PATH/bin/nvcc.exe" '-Dsm=80,86,120,121' -j2
       - run: node scripts/stage-windows-engine.mjs ../engine-source
       - run: npm run dist:windows
       - run: npm run smoke:windows:packaged
