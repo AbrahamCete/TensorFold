@@ -8,13 +8,13 @@ module.exports = {
   npmRebuild: shared.npmRebuild,
   directories: { ...shared.directories, output: 'release/linux' },
   files: [...shared.files],
-  extraResources: shared.extraResources.filter(({ to }) => ['voice-notices', 'third-party-notices'].includes(to)),
+  extraResources: shared.extraResources.filter(({ to }) => ['engine', 'voice-notices', 'third-party-notices'].includes(to)),
   asar: shared.asar,
   afterPack: shared.afterPack,
   // Linux development artifacts are unsigned; the Mac signing requirement remains untouched.
   forceCodeSigning: false,
   electronFuses: { ...shared.electronFuses },
-  asarUnpack: ['node_modules/onnxruntime-node/bin/napi-v3/linux/x64/**/*'],
+  asarUnpack: ['node_modules/onnxruntime-node/bin/napi-v3/linux/${arch}/**/*'],
   publish: null,
   linux: {
     target: [{ target: 'AppImage', arch: ['x64'] }],

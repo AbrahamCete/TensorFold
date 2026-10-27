@@ -7,13 +7,13 @@ const require = createRequire(import.meta.url)
 const root = fileURLToPath(new URL('..', import.meta.url))
 
 export function linuxPackageArgs(args, platform = process.platform, arch = process.arch) {
-  if (platform !== 'linux' || arch !== 'x64') throw new Error('Initial desktop packaging requires a Linux x64 build host.')
+  if (platform !== 'linux' || !['x64', 'arm64'].includes(arch)) throw new Error('Desktop packaging requires a Linux x64 or arm64 build host.')
   if (args.length !== 1 || !['--dir', '--appimage'].includes(args[0])) {
     throw new Error('Choose exactly --dir or --appimage; this script never publishes artifacts.')
   }
   return [
     '--config', 'scripts/linux-builder-config.cjs', '--linux',
-    ...(args[0] === '--dir' ? ['--dir'] : ['AppImage']), '--x64', '--publish', 'never',
+    ...(args[0] === '--dir' ? ['--dir'] : ['AppImage']), `--${arch}`, '--publish', 'never',
   ]
 }
 
